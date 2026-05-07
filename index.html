@@ -277,7 +277,7 @@
         }
 
         function pushSensorMatrix(rawDeviceToWorldMatrix) {
-            sensorRawDeviceToWorldMatrix = orthonormalize(rawDeviceToWorldMatrix);
+            sensorRawDeviceToWorldMatrix = orthonormalize(transpose3(rawDeviceToWorldMatrix));
             if (pendingSensorCalibration || !sensorReferenceScreenToWorldMatrix) {
                 calibrateSensorReference();
             }
