@@ -15,54 +15,10 @@
             background-color: #000;
             image-rendering: pixelated;
         }
-        .sensor-panel {
-            position: fixed;
-            top: 16px;
-            left: 16px;
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            width: min(320px, calc(100vw - 32px));
-            padding: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 14px;
-            background: rgba(10, 10, 10, 0.72);
-            backdrop-filter: blur(10px);
-            color: #f5f5f5;
-            font: 500 14px/1.4 "Segoe UI", sans-serif;
-        }
-        .sensor-panel button {
-            appearance: none;
-            border: 0;
-            border-radius: 10px;
-            padding: 10px 12px;
-            background: #f5f5f5;
-            color: #111;
-            font: inherit;
-            cursor: pointer;
-        }
-        .sensor-panel button.secondary {
-            background: rgba(255, 255, 255, 0.12);
-            color: #f5f5f5;
-        }
-        .sensor-panel button:disabled {
-            opacity: 0.5;
-            cursor: default;
-        }
-        .sensor-status {
-            color: rgba(255, 255, 255, 0.72);
-            font-size: 12px;
-        }
     </style>
 </head>
 <body>
     <canvas id="fullscreen-canvas"></canvas>
-    <div class="sensor-panel">
-        <button id="sensor-toggle" type="button">Enable motion lock</button>
-        <button id="sensor-recenter" class="secondary" type="button" disabled>Recenter lock</button>
-        <div id="sensor-status" class="sensor-status">Motion lock is off. Keyboard controls still work.</div>
-    </div>
     <script>
         const IDENTITY_MATRIX = [
             1, 0, 0,
@@ -70,20 +26,8 @@
             0, 0, 1
         ];
 
-        // Render matrix for the current frame.
+        // Use a Matrix to store orientation instead of Euler angles
         let matrix = IDENTITY_MATRIX.slice();
-        let manualMatrix = IDENTITY_MATRIX.slice();
-
-        let sensorEnabled = false;
-        let sensorSource = null;
-        let sensorRawDeviceToWorldMatrix = null;
-        let sensorReferenceScreenToWorldMatrix = null;
-        let pendingSensorCalibration = false;
-        let sensorListener = null;
-
-        const sensorToggle = document.getElementById('sensor-toggle');
-        const sensorRecenter = document.getElementById('sensor-recenter');
-        const sensorStatus = document.getElementById('sensor-status');
 
         const ROT_STEP = 0.0075;
         const TARGET_FPS = 165;
@@ -93,10 +37,7 @@
             const key = e.key.toLowerCase();
             pressed[key] = true;
             if (key === 'r') {
-                manualMatrix = IDENTITY_MATRIX.slice();
-                if (sensorEnabled) {
-                    calibrateSensorReference();
-                }
+                matrix = IDENTITY_MATRIX.slice();
             }
         });
         window.addEventListener('keyup', e => { pressed[e.key.toLowerCase()] = false; });
@@ -112,35 +53,6 @@
                 }
             }
             return C;
-        }
-
-        function transpose3(M) {
-            return [
-                M[0], M[3], M[6],
-                M[1], M[4], M[7],
-                M[2], M[5], M[8]
-            ];
-        }
-
-        function rotationZMatrix(angleRadians) {
-            const cos = Math.cos(angleRadians);
-            const sin = Math.sin(angleRadians);
-            return [
-                cos, -sin, 0,
-                sin, cos, 0,
-                0, 0, 1
-            ];
-        }
-
-        function getScreenAngleRadians() {
-            const angle = window.screen?.orientation?.angle;
-            if (typeof angle === 'number') {
-                return angle * Math.PI / 180;
-            }
-            if (typeof window.orientation === 'number') {
-                return window.orientation * Math.PI / 180;
-            }
-            return 0;
         }
 
         function dot3(a, b) {
@@ -188,229 +100,6 @@
             ];
         }
 
-        function normalizeQuaternion(q) {
-            const len = Math.hypot(q[0], q[1], q[2], q[3]);
-            if (len < 1e-8) return null;
-            return [q[0] / len, q[1] / len, q[2] / len, q[3] / len];
-        }
-
-        function multiplyQuaternion(a, b) {
-            return [
-                a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
-                a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
-                a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
-                a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
-            ];
-        }
-
-        function quaternionFromAxisAngle(axis, angleRadians) {
-            const halfAngle = angleRadians / 2;
-            const sin = Math.sin(halfAngle);
-            return [axis[0] * sin, axis[1] * sin, axis[2] * sin, Math.cos(halfAngle)];
-        }
-
-        function quaternionFromEulerYXZ(x, y, z) {
-            const c1 = Math.cos(x / 2);
-            const c2 = Math.cos(y / 2);
-            const c3 = Math.cos(z / 2);
-            const s1 = Math.sin(x / 2);
-            const s2 = Math.sin(y / 2);
-            const s3 = Math.sin(z / 2);
-
-            return [
-                s1 * c2 * c3 + c1 * s2 * s3,
-                c1 * s2 * c3 - s1 * c2 * s3,
-                c1 * c2 * s3 - s1 * s2 * c3,
-                c1 * c2 * c3 + s1 * s2 * s3
-            ];
-        }
-
-        function matrixFromQuaternion(q) {
-            const normalized = normalizeQuaternion(q);
-            if (!normalized) return IDENTITY_MATRIX.slice();
-
-            const [x, y, z, w] = normalized;
-            const xx = x * x;
-            const yy = y * y;
-            const zz = z * z;
-            const xy = x * y;
-            const xz = x * z;
-            const yz = y * z;
-            const wx = w * x;
-            const wy = w * y;
-            const wz = w * z;
-
-            return orthonormalize([
-                1 - 2 * (yy + zz), 2 * (xy - wz), 2 * (xz + wy),
-                2 * (xy + wz), 1 - 2 * (xx + zz), 2 * (yz - wx),
-                2 * (xz - wy), 2 * (yz + wx), 1 - 2 * (xx + yy)
-            ]);
-        }
-
-        function setSensorStatus(message) {
-            sensorStatus.textContent = message;
-        }
-
-        function refreshSensorButtons() {
-            sensorToggle.textContent = sensorEnabled ? 'Disable motion lock' : 'Enable motion lock';
-            sensorRecenter.disabled = !sensorEnabled || !sensorRawDeviceToWorldMatrix;
-        }
-
-        function getCurrentSensorScreenToWorldMatrix() {
-            if (!sensorRawDeviceToWorldMatrix) return null;
-            return orthonormalize(multiply(sensorRawDeviceToWorldMatrix, rotationZMatrix(getScreenAngleRadians())));
-        }
-
-        function calibrateSensorReference() {
-            const current = getCurrentSensorScreenToWorldMatrix();
-            if (!current) {
-                pendingSensorCalibration = true;
-                setSensorStatus('Waiting for the first sensor sample...');
-                refreshSensorButtons();
-                return;
-            }
-
-            sensorReferenceScreenToWorldMatrix = current.slice();
-            pendingSensorCalibration = false;
-            setSensorStatus('Motion lock is active. The cube stays world-locked while you move the phone.');
-            refreshSensorButtons();
-        }
-
-        function pushSensorMatrix(rawDeviceToWorldMatrix) {
-            sensorRawDeviceToWorldMatrix = orthonormalize(rawDeviceToWorldMatrix);
-            if (pendingSensorCalibration || !sensorReferenceScreenToWorldMatrix) {
-                calibrateSensorReference();
-            }
-            refreshSensorButtons();
-        }
-
-        function stopSensorSource() {
-            if (sensorSource && typeof sensorSource.stop === 'function') {
-                sensorSource.stop();
-            }
-            if (sensorListener) {
-                window.removeEventListener('deviceorientation', sensorListener, true);
-                sensorListener = null;
-            }
-            sensorSource = null;
-        }
-
-        function stopSensorLock() {
-            sensorEnabled = false;
-            stopSensorSource();
-            sensorRawDeviceToWorldMatrix = null;
-            sensorReferenceScreenToWorldMatrix = null;
-            pendingSensorCalibration = false;
-            setSensorStatus('Motion lock is off. Keyboard controls still work.');
-            refreshSensorButtons();
-        }
-
-        function handleGenericOrientationReading(sensor, label) {
-            const quaternion = sensor.quaternion;
-            if (!quaternion) return;
-            pushSensorMatrix(matrixFromQuaternion(quaternion));
-            if (sensorEnabled) {
-                setSensorStatus('Motion lock is active via ' + label + '.');
-            }
-        }
-
-        function startAbsoluteOrientationSensor() {
-            if (!('AbsoluteOrientationSensor' in window)) return false;
-
-            const sensor = new AbsoluteOrientationSensor({ frequency: 60, referenceFrame: 'device' });
-            sensor.addEventListener('reading', () => handleGenericOrientationReading(sensor, 'gyroscope + accelerometer + magnetometer'));
-            sensor.addEventListener('error', event => {
-                setSensorStatus('Absolute orientation sensor failed: ' + event.error.name + '. Falling back if possible.');
-            });
-            sensor.start();
-            sensorSource = sensor;
-            return true;
-        }
-
-        function startRelativeOrientationSensor() {
-            if (!('RelativeOrientationSensor' in window)) return false;
-
-            const sensor = new RelativeOrientationSensor({ frequency: 60, referenceFrame: 'device' });
-            sensor.addEventListener('reading', () => handleGenericOrientationReading(sensor, 'gyroscope + accelerometer'));
-            sensor.addEventListener('error', event => {
-                setSensorStatus('Relative orientation sensor failed: ' + event.error.name + '. Falling back if possible.');
-            });
-            sensor.start();
-            sensorSource = sensor;
-            return true;
-        }
-
-        function startDeviceOrientationFallback() {
-            if (!('DeviceOrientationEvent' in window)) return false;
-
-            sensorListener = event => {
-                const alpha = (event.alpha || 0) * Math.PI / 180;
-                const beta = (event.beta || 0) * Math.PI / 180;
-                const gamma = (event.gamma || 0) * Math.PI / 180;
-
-                const deviceQuaternion = quaternionFromEulerYXZ(beta, alpha, -gamma);
-                pushSensorMatrix(matrixFromQuaternion(deviceQuaternion));
-
-                if (sensorEnabled) {
-                    const label = event.absolute ? 'device orientation (absolute heading)' : 'device orientation';
-                    setSensorStatus('Motion lock is active via ' + label + '.');
-                }
-            };
-
-            window.addEventListener('deviceorientation', sensorListener, true);
-            sensorSource = { stop() {} };
-            return true;
-        }
-
-        async function requestMotionPermissions() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                const orientationPermission = await DeviceOrientationEvent.requestPermission();
-                if (orientationPermission !== 'granted') {
-                    throw new Error('Device orientation permission was denied.');
-                }
-            }
-
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                const motionPermission = await DeviceMotionEvent.requestPermission();
-                if (motionPermission !== 'granted') {
-                    throw new Error('Device motion permission was denied.');
-                }
-            }
-        }
-
-        async function startSensorLock() {
-            stopSensorSource();
-            sensorEnabled = true;
-            sensorRawDeviceToWorldMatrix = null;
-            sensorReferenceScreenToWorldMatrix = null;
-            pendingSensorCalibration = true;
-            refreshSensorButtons();
-            setSensorStatus('Requesting motion sensor access...');
-
-            try {
-                await requestMotionPermissions();
-
-                const started = startAbsoluteOrientationSensor() || startRelativeOrientationSensor() || startDeviceOrientationFallback();
-                if (!started) {
-                    throw new Error('No supported orientation sensor API is available in this browser.');
-                }
-
-                setSensorStatus('Move the phone slightly to calibrate the motion lock.');
-            } catch (error) {
-                stopSensorLock();
-                setSensorStatus(error.message);
-            }
-        }
-
-        async function toggleSensorLock() {
-            if (sensorEnabled) {
-                stopSensorLock();
-                return;
-            }
-
-            await startSensorLock();
-        }
-
         function updateRotation(dtSeconds) {
             let delta = [1, 0, 0, 0, 1, 0, 0, 0, 1]; // Identity
             const step = ROT_STEP * TARGET_FPS * dtSeconds;
@@ -437,23 +126,8 @@
 
             // Apply the delta rotation TO the current matrix
             // This order (delta * matrix) makes rotation relative to the SCREEN
-            manualMatrix = multiply(delta, manualMatrix);
-            manualMatrix = orthonormalize(manualMatrix);
-        }
-
-        function updateRenderMatrix() {
-            const currentSensorScreenToWorldMatrix = sensorEnabled ? getCurrentSensorScreenToWorldMatrix() : null;
-
-            if (sensorEnabled && currentSensorScreenToWorldMatrix && sensorReferenceScreenToWorldMatrix) {
-                matrix = multiply(
-                    multiply(transpose3(currentSensorScreenToWorldMatrix), sensorReferenceScreenToWorldMatrix),
-                    manualMatrix
-                );
-                matrix = orthonormalize(matrix);
-                return;
-            }
-
-            matrix = manualMatrix.slice();
+            matrix = multiply(delta, matrix);
+            matrix = orthonormalize(matrix);
         }
 
         function rotateVertex([x, y, z]) {
@@ -570,7 +244,6 @@
             lastTimestamp = timestamp;
 
             updateRotation(dtSeconds);
-            updateRenderMatrix();
             const canvas = document.getElementById('fullscreen-canvas');
             const ctx = canvas.getContext('2d');
             draw(ctx, canvas.clientWidth, canvas.clientHeight);
@@ -587,17 +260,9 @@
         }
 
         window.addEventListener('resize', resizeCanvas);
-        window.addEventListener('orientationchange', updateRenderMatrix);
-        sensorToggle.addEventListener('click', () => {
-            toggleSensorLock();
-        });
-        sensorRecenter.addEventListener('click', () => {
-            calibrateSensorReference();
-        });
         window.addEventListener('DOMContentLoaded', () => {
             resizeCanvas();
             animate();
-            refreshSensorButtons();
         });
     </script>
 </body>
