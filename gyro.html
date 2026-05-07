@@ -106,11 +106,9 @@
 
         // ─── Constants ────────────────────────────────────────────────────────────
         var IDENTITY = [1,0,0, 0,1,0, 0,0,1];
-        var ROT_STEP   = 0.0075;
         var TARGET_FPS = 165;
 
         var matrix  = IDENTITY.slice();
-        var pressed = {};
 
         var sensorEnabled        = false;
         var sensorListenerAdded  = false;
@@ -118,14 +116,6 @@
         var sensorOffset         = null;
         var manualMatrixAtEnable = null;
         var eventCount           = 0;
-
-        // ─── Keyboard ─────────────────────────────────────────────────────────────
-        window.addEventListener('keydown', function(e) {
-            var key = e.key.toLowerCase();
-            pressed[key] = true;
-            if (key === 'r') { matrix = IDENTITY.slice(); sensorMatrix = null; sensorOffset = null; }
-        });
-        window.addEventListener('keyup', function(e) { pressed[e.key.toLowerCase()] = false; });
 
         // ─── Matrix helpers ───────────────────────────────────────────────────────
         function multiply(A, B) {
@@ -280,27 +270,6 @@
             return matrix;
         }
 
-        function updateRotation(dt) {
-            if (sensorEnabled) return;
-            var delta = IDENTITY.slice();
-            var step  = ROT_STEP * TARGET_FPS * dt;
-            var a, c, s;
-            if (pressed['w'] || pressed['s']) {
-                a=pressed['w']?-step:step; c=Math.cos(a); s=Math.sin(a);
-                delta=multiply([1,0,0, 0,c,-s, 0,s,c], delta);
-            }
-            if (pressed['a'] || pressed['d']) {
-                a=pressed['a']?step:-step; c=Math.cos(a); s=Math.sin(a);
-                delta=multiply([c,0,s, 0,1,0, -s,0,c], delta);
-            }
-            if (pressed['q'] || pressed['e']) {
-                a=pressed['q']?-step:step; c=Math.cos(a); s=Math.sin(a);
-                delta=multiply([c,-s,0, s,c,0, 0,0,1], delta);
-            }
-            matrix=multiply(delta,matrix);
-            matrix=orthonormalize(matrix);
-        }
-
         // ─── Rendering ────────────────────────────────────────────────────────────
         function rotateVertex(v, M) {
             return [v[0]*M[0]+v[1]*M[1]+v[2]*M[2],
@@ -374,7 +343,6 @@
         function animate(ts){
             var dt=lastTs===0?1/TARGET_FPS:Math.min((ts-lastTs)/1000,0.1);
             lastTs=ts;
-            updateRotation(dt);
             var canvas=document.getElementById('fullscreen-canvas');
             draw(canvas.getContext('2d'),canvas.clientWidth,canvas.clientHeight);
             requestAnimationFrame(animate);
