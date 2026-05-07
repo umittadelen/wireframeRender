@@ -160,7 +160,7 @@
 
         function deviceToMatrix(alpha, beta, gamma) {
             var D = Math.PI / 180;
-            var a=alpha*D, b=-beta*D, g=gamma*D;
+            var a=-alpha*D, b=beta*D, g=-gamma*D;
             var ca=Math.cos(a),sa=Math.sin(a);
             var cb=Math.cos(b),sb=Math.sin(b);
             var cg=Math.cos(g),sg=Math.sin(g);
