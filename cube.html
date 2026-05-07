@@ -8,358 +8,387 @@
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
         body { width: 100vw; height: 100vh; background: #000; }
         canvas {
-            display: block; position: absolute; top: 0; left: 0;
+            display: block;
+            position: absolute;
+            top: 0; left: 0;
             width: 100vw; height: 100vh;
-            background-color: #000; image-rendering: pixelated;
-        }
-        #sensor-ui {
-            position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-            z-index: 10; display: flex; flex-direction: column;
-            align-items: center; gap: 10px; pointer-events: none;
-        }
-        #sensor-status {
-            font-family: 'Courier New', monospace; font-size: 11px;
-            letter-spacing: 0.12em; text-transform: uppercase;
-            color: rgba(255,255,255,0.35); text-align: center; max-width: 90vw;
-        }
-        #sensor-btn {
-            pointer-events: all; cursor: pointer; background: transparent;
-            border: 1px solid rgba(255,255,255,0.18); border-radius: 2px;
-            color: rgba(255,255,255,0.7); font-family: 'Courier New', monospace;
-            font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
-            padding: 10px 20px; -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation; min-width: 220px; text-align: center;
-            transition: border-color 0.2s, color 0.2s;
-        }
-        #sensor-btn.active { border-color: oklch(0.76 0.18 142); color: oklch(0.86 0.18 142); }
-        #hint {
-            position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-            font-family: 'Courier New', monospace; font-size: 10px;
-            letter-spacing: 0.12em; text-transform: uppercase;
-            color: rgba(255,255,255,0.2); white-space: nowrap; pointer-events: none;
+            background-color: #000;
+            image-rendering: pixelated;
         }
 
-        /* Axis calibration UI */
-        #calib {
-            display: none;
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-            z-index: 30; background: rgba(0,0,0,0.92);
-            border: 1px solid rgba(255,255,255,0.15);
-            padding: 24px 28px; text-align: center;
+        #sensor-ui {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        #sensor-status {
             font-family: 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.35);
+            text-align: center;
+            max-width: 90vw;
+            word-break: break-all;
         }
-        #calib.visible { display: block; }
-        #calib p {
-            color: rgba(255,255,255,0.6); font-size: 11px;
-            letter-spacing: 0.1em; text-transform: uppercase;
-            margin: 0 0 18px; line-height: 1.7;
-        }
-        .calib-row { display: flex; gap: 10px; justify-content: center; margin-bottom: 10px; }
-        .calib-btn {
-            background: transparent; border: 1px solid rgba(255,255,255,0.2);
-            color: rgba(255,255,255,0.7); font-family: 'Courier New', monospace;
-            font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
-            padding: 8px 14px; cursor: pointer; touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent; transition: border-color 0.15s, color 0.15s;
-        }
-        .calib-btn:hover, .calib-btn:active { border-color: rgba(255,255,255,0.6); color: #fff; }
-        .calib-btn.sel { border-color: oklch(0.76 0.18 142); color: oklch(0.86 0.18 142); }
-        #calib-done {
-            margin-top: 16px; background: transparent;
-            border: 1px solid rgba(255,255,255,0.3);
-            color: rgba(255,255,255,0.8); font-family: 'Courier New', monospace;
-            font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
-            padding: 10px 28px; cursor: pointer; touch-action: manipulation;
+
+        #sensor-btn {
+            pointer-events: all;
+            cursor: pointer;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 2px;
+            color: rgba(255,255,255,0.7);
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            padding: 10px 20px;
             -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            min-width: 220px;
+            text-align: center;
+        }
+        #sensor-btn.active {
+            border-color: oklch(0.76 0.18 142);
+            color: oklch(0.86 0.18 142);
+        }
+
+        #diag {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 9px;
+            color: rgba(255,255,255,0.25);
+            line-height: 1.6;
+            pointer-events: none;
+            z-index: 20;
+            word-break: break-all;
         }
     </style>
 </head>
 <body>
     <canvas id="fullscreen-canvas"></canvas>
-    <div id="hint">WASD / QE · R reset</div>
 
-    <!-- Axis fix calibration overlay -->
-    <div id="calib">
-        <p>Tilt your phone FORWARD (top away).<br>Which way does the cube move?</p>
-        <div id="calib-q"></div>
-        <button id="calib-done">DONE</button>
-    </div>
+    <div id="diag"></div>
 
     <div id="sensor-ui">
-        <div id="sensor-status">tap to enable gyroscope</div>
+        <div id="sensor-status">tap button to start</div>
         <button id="sensor-btn">ENABLE GYROSCOPE</button>
     </div>
 
     <script>
-        var IDENTITY = [1,0,0, 0,1,0, 0,0,1];
-        var ROT_STEP = 0.0075, TARGET_FPS = 165;
-        var matrix = IDENTITY.slice(), pressed = {};
-
-        var sensorEnabled = false, sensorListenerAdded = false;
-        var sensorMatrix = null, sensorOffset = null, manualMatrixAtEnable = null;
-
-        // Signs for each Euler angle — the user can flip these via calibration.
-        // Default: negate beta and gamma which matches iOS screen coordinate conventions.
-        var signAlpha = 1, signBeta = -1, signGamma = -1;
-
-        // Try to restore from localStorage
-        try {
-            var saved = JSON.parse(localStorage.getItem('cube_signs') || 'null');
-            if (saved) { signAlpha = saved.a; signBeta = saved.b; signGamma = saved.g; }
-        } catch(e) {}
-
-        function saveSigns() {
-            try { localStorage.setItem('cube_signs', JSON.stringify({a:signAlpha,b:signBeta,g:signGamma})); } catch(e){}
+        // ─── Diagnostics ──────────────────────────────────────────────────────────
+        var diagEl = document.getElementById('diag');
+        function diag(msg) {
+            var line = document.createElement('div');
+            line.textContent = msg;
+            diagEl.appendChild(line);
+            // Keep last 12 lines
+            while (diagEl.children.length > 12) diagEl.removeChild(diagEl.firstChild);
         }
 
-        // ── Keyboard ──────────────────────────────────────────────────────────────
-        window.addEventListener('keydown', function(e) {
-            var k = e.key.toLowerCase(); pressed[k] = true;
-            if (k==='r') { matrix=IDENTITY.slice(); sensorMatrix=null; sensorOffset=null; }
-        });
-        window.addEventListener('keyup', function(e) { pressed[e.key.toLowerCase()]=false; });
+        // Run diagnostics immediately
+        diag('DOE exists: ' + (typeof DeviceOrientationEvent));
+        diag('DOE.reqPerm: ' + (typeof DeviceOrientationEvent !== 'undefined' ? typeof DeviceOrientationEvent.requestPermission : 'n/a'));
+        diag('protocol: ' + location.protocol);
+        diag('UA: ' + navigator.userAgent.slice(0,80));
 
-        // ── Matrix math ───────────────────────────────────────────────────────────
-        function multiply(A,B){
-            var C=new Array(9).fill(0);
-            for(var i=0;i<3;i++) for(var j=0;j<3;j++)
-                C[i*3+j]=A[i*3]*B[j]+A[i*3+1]*B[3+j]+A[i*3+2]*B[6+j];
+        // ─── Constants ────────────────────────────────────────────────────────────
+        var IDENTITY = [1,0,0, 0,1,0, 0,0,1];
+        var ROT_STEP   = 0.0075;
+        var TARGET_FPS = 165;
+
+        var matrix  = IDENTITY.slice();
+        var pressed = {};
+
+        var sensorEnabled        = false;
+        var sensorListenerAdded  = false;
+        var sensorMatrix         = null;
+        var sensorOffset         = null;
+        var manualMatrixAtEnable = null;
+        var eventCount           = 0;
+
+        // ─── Keyboard ─────────────────────────────────────────────────────────────
+        window.addEventListener('keydown', function(e) {
+            var key = e.key.toLowerCase();
+            pressed[key] = true;
+            if (key === 'r') { matrix = IDENTITY.slice(); sensorMatrix = null; sensorOffset = null; }
+        });
+        window.addEventListener('keyup', function(e) { pressed[e.key.toLowerCase()] = false; });
+
+        // ─── Matrix helpers ───────────────────────────────────────────────────────
+        function multiply(A, B) {
+            var C = new Array(9).fill(0);
+            for (var i = 0; i < 3; i++)
+                for (var j = 0; j < 3; j++)
+                    C[i*3+j] = A[i*3]*B[j] + A[i*3+1]*B[3+j] + A[i*3+2]*B[6+j];
             return C;
         }
-        function dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
-        function cross3(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+        function dot3(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+        function cross3(a,b){
+            return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+        }
         function normalize3(v){
-            var l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
-            return l<1e-8?null:[v[0]/l,v[1]/l,v[2]/l];
+            var len = Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+            return len < 1e-8 ? null : [v[0]/len, v[1]/len, v[2]/len];
         }
         function orthonormalize(M){
-            var x=normalize3([M[0],M[1],M[2]]);
-            if(!x) return IDENTITY.slice();
-            var r1=[M[3],M[4],M[5]],p=dot3(r1,x);
-            var y=normalize3([r1[0]-p*x[0],r1[1]-p*x[1],r1[2]-p*x[2]]);
-            if(!y) y=Math.abs(x[0])<0.9?normalize3(cross3([1,0,0],x)):normalize3(cross3([0,1,0],x));
-            var z=normalize3(cross3(x,y)), yF=normalize3(cross3(z,x));
-            return[x[0],x[1],x[2],yF[0],yF[1],yF[2],z[0],z[1],z[2]];
+            var x = normalize3([M[0],M[1],M[2]]);
+            if (!x) return IDENTITY.slice();
+            var r1 = [M[3],M[4],M[5]];
+            var proj = dot3(r1,x);
+            var y = normalize3([r1[0]-proj*x[0], r1[1]-proj*x[1], r1[2]-proj*x[2]]);
+            if (!y) y = Math.abs(x[0])<0.9 ? normalize3(cross3([1,0,0],x)) : normalize3(cross3([0,1,0],x));
+            var z  = normalize3(cross3(x,y));
+            var yF = normalize3(cross3(z,x));
+            return [x[0],x[1],x[2], yF[0],yF[1],yF[2], z[0],z[1],z[2]];
         }
-        function transpose(M){return[M[0],M[3],M[6],M[1],M[4],M[7],M[2],M[5],M[8]];}
+        function transpose(M){
+            return [M[0],M[3],M[6], M[1],M[4],M[7], M[2],M[5],M[8]];
+        }
 
-        // Build rotation matrix from device Euler angles with per-axis sign control.
-        // W3C intrinsic order: Rz(alpha) · Rx(beta) · Ry(gamma)
         function deviceToMatrix(alpha, beta, gamma) {
-            var D=Math.PI/180;
-            var a=signAlpha*alpha*D, b=signBeta*beta*D, g=signGamma*gamma*D;
+            var D = Math.PI / 180;
+            var a=alpha*D, b=-beta*D, g=-gamma*D;
             var ca=Math.cos(a),sa=Math.sin(a);
             var cb=Math.cos(b),sb=Math.sin(b);
             var cg=Math.cos(g),sg=Math.sin(g);
-            return multiply(multiply(
-                [ca,-sa,0, sa,ca,0, 0,0,1],   // Rz(alpha)
-                [1,0,0, 0,cb,-sb, 0,sb,cb]),   // Rx(beta)
-                [cg,0,sg, 0,1,0, -sg,0,cg]);   // Ry(gamma)
+            var Rz=[ca,-sa,0, sa,ca,0, 0,0,1];
+            var Rx=[1,0,0, 0,cb,-sb, 0,sb,cb];
+            var Ry=[cg,0,sg, 0,1,0, -sg,0,cg];
+            return multiply(multiply(Rz, Rx), Ry);
         }
 
-        // ── Sensor ────────────────────────────────────────────────────────────────
+        // ─── Sensor event ─────────────────────────────────────────────────────────
         function onDeviceOrientation(e) {
+            eventCount++;
+            if (eventCount <= 3) {
+                diag('evt#' + eventCount + ' a=' + (e.alpha == null ? 'null' : e.alpha.toFixed(1)) +
+                     ' b=' + (e.beta == null ? 'null' : e.beta.toFixed(1)) +
+                     ' g=' + (e.gamma == null ? 'null' : e.gamma.toFixed(1)) +
+                     ' abs=' + e.absolute);
+            }
+
             if (!sensorEnabled) return;
-            if (e.alpha==null||e.beta==null||e.gamma==null) return;
-            var R=deviceToMatrix(e.alpha,e.beta,e.gamma);
-            if (!sensorOffset) { sensorOffset=R.slice(); }
-            sensorMatrix=transpose(multiply(transpose(sensorOffset),R));
+            if (e.alpha == null || e.beta == null || e.gamma == null) return;
+
+            var R = deviceToMatrix(e.alpha, e.beta, e.gamma);
+            if (!sensorOffset) { sensorOffset = R.slice(); }
+            var R_rel = multiply(transpose(sensorOffset), R);
+            sensorMatrix = transpose(R_rel);
         }
 
         function attachSensorListener() {
             if (!sensorListenerAdded) {
                 window.addEventListener('deviceorientation', onDeviceOrientation, true);
-                sensorListenerAdded=true;
+                sensorListenerAdded = true;
+                diag('listener attached');
             }
         }
+
         function activateSensor() {
-            manualMatrixAtEnable=matrix.slice();
-            sensorOffset=null; sensorMatrix=null;
-            sensorEnabled=true; updateUI();
-        }
-        function disableSensor() {
-            sensorEnabled=false; sensorMatrix=null; sensorOffset=null; updateUI();
+            manualMatrixAtEnable = matrix.slice();
+            sensorOffset  = null;
+            sensorMatrix  = null;
+            sensorEnabled = true;
+            updateUI();
+            diag('sensor activated');
         }
 
+        function disableSensor() {
+            sensorEnabled = false;
+            sensorMatrix  = null;
+            sensorOffset  = null;
+            updateUI();
+        }
+
+        // ─── Enable — synchronous click handler required by iOS ───────────────────
         function enableSensor() {
-            if (typeof DeviceOrientationEvent==='undefined') { setStatus('not supported'); return; }
-            if (typeof DeviceOrientationEvent.requestPermission==='function') {
+            diag('enableSensor called');
+            diag('DOE type: ' + typeof DeviceOrientationEvent);
+
+            if (typeof DeviceOrientationEvent === 'undefined') {
+                setStatus('DeviceOrientationEvent undefined');
+                diag('FAIL: DOE undefined');
+                return;
+            }
+
+            diag('reqPerm type: ' + typeof DeviceOrientationEvent.requestPermission);
+
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+
+                diag('calling requestPermission...');
                 DeviceOrientationEvent.requestPermission()
-                    .then(function(s) {
-                        if (s==='granted') { attachSensorListener(); activateSensor(); }
-                        else { setStatus('permission denied'); }
+                    .then(function(state) {
+                        diag('permission state: ' + state);
+                        if (state === 'granted') {
+                            attachSensorListener();
+                            activateSensor();
+                        } else {
+                            setStatus('permission: ' + state);
+                        }
                     })
-                    .catch(function(err) { setStatus('error: '+String(err).slice(0,30)); });
+                    .catch(function(err) {
+                        diag('perm error: ' + err);
+                        setStatus('error: ' + String(err).slice(0,40));
+                    });
             } else {
-                attachSensorListener(); activateSensor();
+                // Android / non-iOS
+                diag('no requestPermission, attaching directly');
+                attachSensorListener();
+                activateSensor();
             }
         }
 
+        // ─── Button ───────────────────────────────────────────────────────────────
         document.getElementById('sensor-btn').addEventListener('click', function() {
+            diag('btn click');
             if (sensorEnabled) { disableSensor(); } else { enableSensor(); }
         });
 
-        function setStatus(m){ document.getElementById('sensor-status').textContent=m; }
+        function setStatus(msg) {
+            document.getElementById('sensor-status').textContent = msg;
+        }
         function updateUI() {
-            var btn=document.getElementById('sensor-btn');
+            var btn = document.getElementById('sensor-btn');
             if (sensorEnabled) {
-                btn.textContent='DISABLE GYROSCOPE'; btn.classList.add('active');
+                btn.textContent = 'DISABLE GYROSCOPE';
+                btn.classList.add('active');
                 setStatus('active — rotate to orbit');
             } else {
-                btn.textContent='ENABLE GYROSCOPE'; btn.classList.remove('active');
-                setStatus('tap to enable gyroscope');
+                btn.textContent = 'ENABLE GYROSCOPE';
+                btn.classList.remove('active');
+                setStatus('off');
             }
         }
 
         function effectiveMatrix() {
-            if (sensorEnabled&&sensorMatrix) return multiply(manualMatrixAtEnable,sensorMatrix);
+            if (sensorEnabled && sensorMatrix) {
+                return multiply(manualMatrixAtEnable, sensorMatrix);
+            }
             return matrix;
         }
 
         function updateRotation(dt) {
             if (sensorEnabled) return;
-            var delta=IDENTITY.slice(), step=ROT_STEP*TARGET_FPS*dt, a,c,s;
-            if(pressed['w']||pressed['s']){a=pressed['w']?-step:step;c=Math.cos(a);s=Math.sin(a);delta=multiply([1,0,0,0,c,-s,0,s,c],delta);}
-            if(pressed['a']||pressed['d']){a=pressed['a']?step:-step;c=Math.cos(a);s=Math.sin(a);delta=multiply([c,0,s,0,1,0,-s,0,c],delta);}
-            if(pressed['q']||pressed['e']){a=pressed['q']?-step:step;c=Math.cos(a);s=Math.sin(a);delta=multiply([c,-s,0,s,c,0,0,0,1],delta);}
-            matrix=multiply(delta,matrix); matrix=orthonormalize(matrix);
-        }
-
-        // ── Calibration UI ────────────────────────────────────────────────────────
-        // Presents 3 simple questions so the user can correct any axis that's flipped.
-        var calibStep = 0;
-        var calibQuestions = [
-            {
-                label: 'Tilt phone FORWARD (top edge away from you).\nWhich way does the cube top move?',
-                axis: 'beta',
-                correct: 'TOWARD YOU',   // if beta negative, top should come toward screen = toward you
-                flip: 'AWAY FROM YOU'
-            },
-            {
-                label: 'Tilt phone RIGHT (right edge down).\nWhich way does the cube right side move?',
-                axis: 'gamma',
-                correct: 'DOWN',
-                flip: 'UP'
-            },
-            {
-                label: 'Rotate phone clockwise (flat, like a compass).\nWhich way does the cube rotate?',
-                axis: 'alpha',
-                correct: 'CLOCKWISE',
-                flip: 'COUNTER-CLOCKWISE'
+            var delta = IDENTITY.slice();
+            var step  = ROT_STEP * TARGET_FPS * dt;
+            var a, c, s;
+            if (pressed['w'] || pressed['s']) {
+                a=pressed['w']?-step:step; c=Math.cos(a); s=Math.sin(a);
+                delta=multiply([1,0,0, 0,c,-s, 0,s,c], delta);
             }
-        ];
-
-        function showCalib() {
-            calibStep = 0;
-            renderCalibStep();
-            document.getElementById('calib').classList.add('visible');
+            if (pressed['a'] || pressed['d']) {
+                a=pressed['a']?step:-step; c=Math.cos(a); s=Math.sin(a);
+                delta=multiply([c,0,s, 0,1,0, -s,0,c], delta);
+            }
+            if (pressed['q'] || pressed['e']) {
+                a=pressed['q']?-step:step; c=Math.cos(a); s=Math.sin(a);
+                delta=multiply([c,-s,0, s,c,0, 0,0,1], delta);
+            }
+            matrix=multiply(delta,matrix);
+            matrix=orthonormalize(matrix);
         }
-        function renderCalibStep() {
-            var q = calibQuestions[calibStep];
-            var el = document.getElementById('calib-q');
-            el.innerHTML = '';
-            var p = document.createElement('p');
-            p.textContent = q.label;
-            el.appendChild(p);
-            var row = document.createElement('div');
-            row.className = 'calib-row';
-            [q.correct, q.flip].forEach(function(label, idx) {
-                var btn = document.createElement('button');
-                btn.className = 'calib-btn';
-                btn.textContent = label;
-                btn.addEventListener('click', function() {
-                    if (idx === 1) {
-                        // User said it's flipped — toggle that sign
-                        if (q.axis==='alpha') signAlpha *= -1;
-                        if (q.axis==='beta')  signBeta  *= -1;
-                        if (q.axis==='gamma') signGamma *= -1;
-                        // Reset offset so new signs take effect cleanly
-                        sensorOffset = null;
-                    }
-                    calibStep++;
-                    if (calibStep < calibQuestions.length) {
-                        renderCalibStep();
-                    } else {
-                        document.getElementById('calib').classList.remove('visible');
-                        saveSigns();
-                        sensorOffset = null; // rebase with corrected signs
-                    }
-                });
-                row.appendChild(btn);
-            });
-            el.appendChild(row);
-        }
-        document.getElementById('calib-done').addEventListener('click', function() {
-            document.getElementById('calib').classList.remove('visible');
-            saveSigns(); sensorOffset=null;
-        });
 
-        // Long-press the gyro button to open calibration
-        var pressTimer = null;
-        document.getElementById('sensor-btn').addEventListener('touchstart', function() {
-            pressTimer = setTimeout(function() {
-                if (sensorEnabled) showCalib();
-            }, 600);
-        }, {passive:true});
-        document.getElementById('sensor-btn').addEventListener('touchend', function() {
-            clearTimeout(pressTimer);
-        }, {passive:true});
-
-        // ── Rendering ─────────────────────────────────────────────────────────────
-        function rotateVertex(v,M){
-            return[v[0]*M[0]+v[1]*M[1]+v[2]*M[2],
-                   v[0]*M[3]+v[1]*M[4]+v[2]*M[5],
-                   v[0]*M[6]+v[1]*M[7]+v[2]*M[8]];
+        // ─── Rendering ────────────────────────────────────────────────────────────
+        function rotateVertex(v, M) {
+            return [v[0]*M[0]+v[1]*M[1]+v[2]*M[2],
+                    v[0]*M[3]+v[1]*M[4]+v[2]*M[5],
+                    v[0]*M[6]+v[1]*M[7]+v[2]*M[8]];
         }
-        function draw(ctx,width,height){
-            var S=100;
-            var verts=[[-S,-S,-S],[S,-S,-S],[S,S,-S],[-S,S,-S],[-S,-S,S],[S,-S,S],[S,S,S],[-S,S,S]];
-            var edges=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-            var fov=500;
-            function proj(x,y,z){var sc=fov/(fov+z);return[x*sc+width/2,y*sc+height/2];}
+
+        function draw(ctx, width, height) {
+            var S = 100;
+            var vertices = [
+                [-S,-S,-S],[S,-S,-S],[S,S,-S],[-S,S,-S],
+                [-S,-S, S],[S,-S, S],[S,S, S],[-S,S, S]
+            ];
+            var edges = [
+                [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],
+                [6,7],[7,4],[0,4],[1,5],[2,6],[3,7]
+            ];
+            var fov = 500;
+            function project(x,y,z){
+                var sc=fov/(fov+z);
+                return [x*sc+width/2, y*sc+height/2];
+            }
             var dpr=window.devicePixelRatio||1;
-            var pw=Math.floor(width*dpr),ph=Math.floor(height*dpr);
-            var id=ctx.createImageData(pw,ph),data=id.data;
-            function cl(v){return v<0?0:v>1?1:v;}
-            function sg(v){return v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;}
-            var l=0.8608,c=0.3412,h=142.4953*Math.PI/180;
-            var oa=c*Math.cos(h),ob=c*Math.sin(h);
+            var pw=Math.floor(width*dpr), ph=Math.floor(height*dpr);
+            var imageData=ctx.createImageData(pw,ph);
+            var data=imageData.data;
+            function clamp01(v){return v<0?0:v>1?1:v;}
+            function toSrgb(v){return v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;}
+            var l=0.8608,c=0.3412,hDeg=142.4953;
+            var hr=hDeg*Math.PI/180,oa=c*Math.cos(hr),ob=c*Math.sin(hr);
             var l_=l+0.3963377774*oa+0.2158037573*ob;
             var m_=l-0.1055613458*oa-0.0638541728*ob;
             var s_=l-0.0894841775*oa-1.2914855480*ob;
             var l3=l_*l_*l_,m3=m_*m_*m_,s3=s_*s_*s_;
-            var r8=Math.round(cl(sg(4.0767416621*l3-3.3077115913*m3+0.2309699292*s3))*255);
-            var g8=Math.round(cl(sg(-1.2684380046*l3+2.6097574011*m3-0.3413193965*s3))*255);
-            var b8=Math.round(cl(sg(-0.0041960863*l3-0.7034186147*m3+1.7076147010*s3))*255);
-            function sp(x,y){if(x<0||y<0||x>=pw||y>=ph)return;var i=4*(Math.floor(x)+Math.floor(y)*pw);data[i]=r8;data[i+1]=g8;data[i+2]=b8;data[i+3]=255;}
-            function ln(x0,y0,x1,y1){
-                x0=Math.round(x0);y0=Math.round(y0);x1=Math.round(x1);y1=Math.round(y1);
-                var dx=Math.abs(x1-x0),sx=x0<x1?1:-1,dy=-Math.abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy,e2;
-                for(;;){sp(x0,y0);if(x0===x1&&y0===y1)break;e2=2*err;if(e2>=dy){err+=dy;x0+=sx;}if(e2<=dx){err+=dx;y0+=sy;}}
+            var r8=Math.round(clamp01(toSrgb( 4.0767416621*l3-3.3077115913*m3+0.2309699292*s3))*255);
+            var g8=Math.round(clamp01(toSrgb(-1.2684380046*l3+2.6097574011*m3-0.3413193965*s3))*255);
+            var b8=Math.round(clamp01(toSrgb(-0.0041960863*l3-0.7034186147*m3+1.7076147010*s3))*255);
+            function setPixel(x,y){
+                if(x<0||y<0||x>=pw||y>=ph)return;
+                var i=4*(Math.floor(x)+Math.floor(y)*pw);
+                data[i]=r8;data[i+1]=g8;data[i+2]=b8;data[i+3]=255;
+            }
+            function line(x0,y0,x1,y1){
+                x0=Math.round(x0);y0=Math.round(y0);
+                x1=Math.round(x1);y1=Math.round(y1);
+                var dx=Math.abs(x1-x0),sx=x0<x1?1:-1;
+                var dy=-Math.abs(y1-y0),sy=y0<y1?1:-1;
+                var err=dx+dy,e2;
+                for(;;){
+                    setPixel(x0,y0);
+                    if(x0===x1&&y0===y1)break;
+                    e2=2*err;
+                    if(e2>=dy){err+=dy;x0+=sx;}
+                    if(e2<=dx){err+=dx;y0+=sy;}
+                }
             }
             var M=effectiveMatrix();
-            for(var i=0;i<edges.length;i++){
-                var v1=rotateVertex(verts[edges[i][0]],M),v2=rotateVertex(verts[edges[i][1]],M);
-                var p1=proj(v1[0],v1[1],v1[2]),p2=proj(v2[0],v2[1],v2[2]);
-                ln(p1[0]*dpr,p1[1]*dpr,p2[0]*dpr,p2[1]*dpr);
+            for(var ei=0;ei<edges.length;ei++){
+                var si=edges[ei][0],ej=edges[ei][1];
+                var v1=rotateVertex(vertices[si],M);
+                var v2=rotateVertex(vertices[ej],M);
+                var p1=project(v1[0],v1[1],v1[2]);
+                var p2=project(v2[0],v2[1],v2[2]);
+                line(p1[0]*dpr,p1[1]*dpr,p2[0]*dpr,p2[1]*dpr);
             }
-            ctx.clearRect(0,0,width,height);ctx.putImageData(id,0,0);
+            ctx.clearRect(0,0,width,height);
+            ctx.putImageData(imageData,0,0);
         }
 
         var lastTs=0;
         function animate(ts){
             var dt=lastTs===0?1/TARGET_FPS:Math.min((ts-lastTs)/1000,0.1);
-            lastTs=ts; updateRotation(dt);
+            lastTs=ts;
+            updateRotation(dt);
             var canvas=document.getElementById('fullscreen-canvas');
             draw(canvas.getContext('2d'),canvas.clientWidth,canvas.clientHeight);
             requestAnimationFrame(animate);
         }
+
         function resizeCanvas(){
             var canvas=document.getElementById('fullscreen-canvas');
             var dpr=window.devicePixelRatio||1;
-            canvas.width=window.innerWidth*dpr; canvas.height=window.innerHeight*dpr;
-            canvas.style.width=window.innerWidth+'px'; canvas.style.height=window.innerHeight+'px';
+            canvas.width=window.innerWidth*dpr;
+            canvas.height=window.innerHeight*dpr;
+            canvas.style.width=window.innerWidth+'px';
+            canvas.style.height=window.innerHeight+'px';
         }
+
         window.addEventListener('resize',resizeCanvas);
         window.addEventListener('DOMContentLoaded',function(){resizeCanvas();animate();});
     </script>
