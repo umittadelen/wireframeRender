@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+	<title>Wireframe Cube AR</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			--bg: #000;
+			--fg: rgba(255, 255, 255, 0.92);
+			--muted: rgba(255, 255, 255, 0.55);
+			--line: rgba(255, 255, 255, 0.16);
+			--accent: #78f0a5;
+		}
+
+		html, body {
+			margin: 0;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			background: var(--bg);
+			color: var(--fg);
+			font-family: "Courier New", monospace;
+		}
+
+		body {
+			position: relative;
+		}
+
+		canvas {
+			display: block;
+		}
+
+		#overlay {
+			position: fixed;
+			inset: 0;
+			pointer-events: none;
+			z-index: 10;
+		}
+
+		#hud {
+			position: absolute;
+			top: env(safe-area-inset-top, 0);
+			left: 0;
+			right: 0;
+			padding: 16px;
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 12px;
+		}
+
+		#title {
+			max-width: min(68vw, 420px);
+		}
+
+		#title strong {
+			display: block;
+			font-size: 12px;
+			letter-spacing: 0.18em;
+			text-transform: uppercase;
+			margin-bottom: 6px;
+		}
+
+		#title span,
+		#status {
+			font-size: 11px;
+			line-height: 1.55;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+		}
+
+		#status {
+			text-align: right;
+			max-width: min(42vw, 280px);
+		}
+
+		#instructions {
+			position: absolute;
+			left: 50%;
+			bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+			transform: translateX(-50%);
+			width: min(92vw, 480px);
+			box-sizing: border-box;
+			padding: 14px 16px;
+			border: 1px solid var(--line);
+			background: rgba(0, 0, 0, 0.44);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
+		}
+
+		#instructions p {
+			margin: 0;
+			font-size: 11px;
+			line-height: 1.65;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--muted);
+		}
+
+		#instructions .hint {
+			margin-top: 8px;
+			color: var(--fg);
+		}
+
+		#unsupported {
+			position: absolute;
+			inset: 0;
+			display: none;
+			place-items: center;
+			padding: 24px;
+			box-sizing: border-box;
+			background: radial-gradient(circle at top, rgba(120, 240, 165, 0.12), transparent 42%), #000;
+		}
+
+		#unsupported.visible {
+			display: grid;
+		}
+
+		#unsupported .panel {
+			width: min(92vw, 460px);
+			border: 1px solid var(--line);
+			padding: 18px;
+			background: rgba(0, 0, 0, 0.7);
+		}
+
+		#unsupported h1 {
+			margin: 0 0 12px;
+			font-size: 14px;
+			letter-spacing: 0.16em;
+			text-transform: uppercase;
+		}
+
+		#unsupported p {
+			margin: 0;
+			color: var(--muted);
+			font-size: 12px;
+			line-height: 1.65;
+		}
+
+		.ar-button {
+			position: fixed !important;
+			left: 50% !important;
+			bottom: calc(env(safe-area-inset-bottom, 0px) + 112px) !important;
+			transform: translateX(-50%) !important;
+			padding: 12px 20px !important;
+			border: 1px solid rgba(120, 240, 165, 0.38) !important;
+			border-radius: 0 !important;
+			background: rgba(0, 0, 0, 0.58) !important;
+			color: var(--fg) !important;
+			font: 11px/1 "Courier New", monospace !important;
+			letter-spacing: 0.16em !important;
+			text-transform: uppercase !important;
+			width: auto !important;
+			height: auto !important;
+			pointer-events: auto !important;
+		}
+	</style>
+</head>
+<body>
+	<div id="overlay">
+		<div id="hud">
+			<div id="title">
+				<strong>Wireframe Cube AR</strong>
+				<span>1 unit = 1 meter. Place the cube on a detected surface and walk around it.</span>
+			</div>
+			<div id="status">checking webxr support</div>
+		</div>
+		<div id="instructions">
+			<p>Start AR, move the phone slowly until a surface is detected, then tap the screen to place the cube.</p>
+			<p class="hint">The cube is world-locked by the AR system, not by GPS.</p>
+		</div>
+	</div>
+
+	<div id="unsupported">
+		<div class="panel">
+			<h1>AR Not Available</h1>
+			<p>This page requires a secure context and a phone browser with WebXR immersive AR support, typically Android Chrome with ARCore. iPhone Safari does not expose WebXR immersive AR.</p>
+		</div>
+	</div>
+
+	<script type="module">
+		import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js';
+		import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/webxr/ARButton.js';
+
+		var statusEl = document.getElementById('status');
+		var unsupportedEl = document.getElementById('unsupported');
+
+		var scene = new THREE.Scene();
+		var camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+		var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+		renderer.setPixelRatio(window.devicePixelRatio);
+		renderer.setSize(window.innerWidth, window.innerHeight);
+		renderer.xr.enabled = true;
+		document.body.appendChild(renderer.domElement);
+
+		var hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 1.2);
+		scene.add(hemi);
+
+		var cubeGroup = new THREE.Group();
+		cubeGroup.visible = false;
+		scene.add(cubeGroup);
+
+		var boxGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+		var edges = new THREE.EdgesGeometry(boxGeometry);
+		var cube = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x78f0a5 }));
+		cubeGroup.add(cube);
+
+		var axisLength = 0.16;
+		var axes = new THREE.AxesHelper(axisLength);
+		cubeGroup.add(axes);
+
+		var reticle = new THREE.Mesh(
+			new THREE.RingGeometry(0.07, 0.09, 48).rotateX(-Math.PI / 2),
+			new THREE.MeshBasicMaterial({ color: 0x78f0a5 })
+		);
+		reticle.matrixAutoUpdate = false;
+		reticle.visible = false;
+		scene.add(reticle);
+
+		var controller = renderer.xr.getController(0);
+		scene.add(controller);
+
+		var hitTestSource = null;
+		var hitTestSourceRequested = false;
+		var placedOnce = false;
+
+		controller.addEventListener('select', function () {
+			if (!reticle.visible) {
+				statusEl.textContent = 'move phone until a surface is found';
+				return;
+			}
+
+			cubeGroup.visible = true;
+			cubeGroup.position.setFromMatrixPosition(reticle.matrix);
+			cubeGroup.quaternion.setFromRotationMatrix(reticle.matrix);
+			placedOnce = true;
+			statusEl.textContent = 'cube placed at real-world scale';
+		});
+
+		window.addEventListener('resize', function () {
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+			renderer.setSize(window.innerWidth, window.innerHeight);
+		});
+
+		function setUnsupported(message) {
+			unsupportedEl.classList.add('visible');
+			statusEl.textContent = message;
+		}
+
+		async function initAR() {
+			if (!window.isSecureContext) {
+				setUnsupported('requires https or localhost');
+				return;
+			}
+
+			if (!navigator.xr) {
+				setUnsupported('webxr missing');
+				return;
+			}
+
+			var supported = false;
+			try {
+				supported = await navigator.xr.isSessionSupported('immersive-ar');
+			} catch (error) {
+				setUnsupported('webxr check failed');
+				return;
+			}
+
+			if (!supported) {
+				setUnsupported('immersive ar unavailable');
+				return;
+			}
+
+			var button = ARButton.createButton(renderer, {
+				requiredFeatures: ['hit-test'],
+				optionalFeatures: ['dom-overlay', 'local-floor'],
+				domOverlay: { root: document.getElementById('overlay') }
+			});
+			button.classList.add('ar-button');
+			button.textContent = 'Start AR';
+			document.body.appendChild(button);
+			statusEl.textContent = 'ready to start ar';
+		}
+
+		renderer.xr.addEventListener('sessionstart', function () {
+			statusEl.textContent = placedOnce ? 'session resumed' : 'scan for a surface';
+		});
+
+		renderer.xr.addEventListener('sessionend', function () {
+			hitTestSource = null;
+			hitTestSourceRequested = false;
+			reticle.visible = false;
+			statusEl.textContent = cubeGroup.visible ? 'session ended - cube placement kept in scene' : 'session ended';
+		});
+
+		renderer.setAnimationLoop(function (timestamp, frame) {
+			if (frame) {
+				var referenceSpace = renderer.xr.getReferenceSpace();
+				var session = renderer.xr.getSession();
+
+				if (!hitTestSourceRequested) {
+					session.requestReferenceSpace('viewer').then(function (viewerSpace) {
+						session.requestHitTestSource({ space: viewerSpace }).then(function (source) {
+							hitTestSource = source;
+						});
+					});
+
+					session.addEventListener('end', function () {
+						hitTestSourceRequested = false;
+						hitTestSource = null;
+					}, { once: true });
+
+					hitTestSourceRequested = true;
+				}
+
+				if (hitTestSource) {
+					var hitTestResults = frame.getHitTestResults(hitTestSource);
+					if (hitTestResults.length > 0) {
+						var hit = hitTestResults[0];
+						var pose = hit.getPose(referenceSpace);
+						reticle.visible = true;
+						reticle.matrix.fromArray(pose.transform.matrix);
+						if (!placedOnce) {
+							statusEl.textContent = 'surface found - tap to place cube';
+						}
+					} else {
+						reticle.visible = false;
+						if (!placedOnce) {
+							statusEl.textContent = 'scan for a surface';
+						}
+					}
+				}
+			}
+
+			renderer.render(scene, camera);
+		});
+
+		initAR();
+	</script>
+</body>
+</html>
