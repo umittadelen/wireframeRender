@@ -158,9 +158,9 @@
         var config = options || {};
         var fov = config.fov || 500;
         var dpr = config.dpr || window.devicePixelRatio || 1;
-        var l = config.oklchL == null ? 0.8608 : config.oklchL;
-        var c = config.oklchC == null ? 0.3412 : config.oklchC;
-        var h = config.oklchH == null ? 142.4953 : config.oklchH;
+        var l = config.oklchL == null ? 0.8498 : config.oklchL;
+        var c = config.oklchC == null ? 0.352 : config.oklchC;
+        var h = config.oklchH == null ? 144.61 : config.oklchH;
         var alpha = config.alpha == null ? 1 : config.alpha;
 
         var pixelWidth = Math.floor(width * dpr);
