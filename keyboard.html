@@ -15,10 +15,21 @@
             background-color: #000;
             image-rendering: pixelated;
         }
+        #gp-status {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            color: #666;
+            font: 12px monospace;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #gp-status.connected { color: #0f0; }
     </style>
 </head>
 <body>
     <canvas id="fullscreen-canvas"></canvas>
+    <div id="gp-status">No controller detected</div>
     <script src="cube-core.js"></script>
     <script>
         const Core = window.CubeCore;
@@ -29,7 +40,34 @@
 
         const ROT_STEP = 0.0075;
         const TARGET_FPS = 165;
+        const DEADZONE = 0.12;
         const pressed = {};
+
+        let connectedIndex = -1;
+        const gpStatus = document.getElementById('gp-status');
+
+        window.addEventListener('gamepadconnected', e => {
+            connectedIndex = e.gamepad.index;
+            gpStatus.textContent = `Gamepad ${e.gamepad.index}: ${e.gamepad.id}`;
+            gpStatus.classList.add('connected');
+        });
+        window.addEventListener('gamepaddisconnected', e => {
+            if (e.gamepad.index === connectedIndex) connectedIndex = -1;
+            gpStatus.textContent = `No controller detected`;
+            gpStatus.classList.remove('connected');
+        });
+
+        function getGamepad() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (const gp of gamepads) {
+                if (gp && gp.connected) return gp;
+            }
+            return null;
+        }
+
+        function deadzone(v) {
+            return Math.abs(v) > DEADZONE ? v : 0;
+        }
 
         window.addEventListener('keydown', e => {
             const key = e.key.toLowerCase();
@@ -62,6 +100,32 @@
                 const cos = Math.cos(a), sin = Math.sin(a);
                 // Rotate around Screen Z-axis
                 delta = Core.multiply([cos, -sin, 0, sin, cos, 0, 0, 0, 1], delta);
+            }
+
+            // Gamepad support — both sticks
+            const gp = getGamepad();
+            if (gp) {
+                const lx = deadzone(gp.axes[0] || 0); // Left stick X  → yaw  (screen Y)
+                const ly = deadzone(gp.axes[1] || 0); // Left stick Y  → pitch (screen X)
+                const rx = deadzone(gp.axes[2] || 0); // Right stick X → roll  (screen Z)
+                const ry = deadzone(gp.axes[3] || 0); // Right stick Y → pitch (screen X)
+
+                const pitchAmount = ly + ry; // both sticks contribute to pitch
+                if (pitchAmount !== 0) {
+                    const a = pitchAmount * step;
+                    const cos = Math.cos(a), sin = Math.sin(a);
+                    delta = Core.multiply([1, 0, 0, 0, cos, -sin, 0, sin, cos], delta);
+                }
+                if (lx !== 0) {
+                    const a = -lx * step;
+                    const cos = Math.cos(a), sin = Math.sin(a);
+                    delta = Core.multiply([cos, 0, sin, 0, 1, 0, -sin, 0, cos], delta);
+                }
+                if (rx !== 0) {
+                    const a = rx * step;
+                    const cos = Math.cos(a), sin = Math.sin(a);
+                    delta = Core.multiply([cos, -sin, 0, sin, cos, 0, 0, 0, 1], delta);
+                }
             }
 
             // Apply the delta rotation TO the current matrix
