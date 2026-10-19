@@ -5,13 +5,28 @@
         0, 0, 1
     ];
 
-    var CUBE_SIZE = window.CUBE_SIZE || 100;
-    var CUBE_VERTICES = [
-        [-CUBE_SIZE, -CUBE_SIZE, -CUBE_SIZE], [CUBE_SIZE, -CUBE_SIZE, -CUBE_SIZE],
-        [CUBE_SIZE, CUBE_SIZE, -CUBE_SIZE], [-CUBE_SIZE, CUBE_SIZE, -CUBE_SIZE],
-        [-CUBE_SIZE, -CUBE_SIZE, CUBE_SIZE], [CUBE_SIZE, -CUBE_SIZE, CUBE_SIZE],
-        [CUBE_SIZE, CUBE_SIZE, CUBE_SIZE], [-CUBE_SIZE, CUBE_SIZE, CUBE_SIZE]
-    ];
+    var cubeVerticesCacheSize = null;
+    var cubeVerticesCache = null;
+
+    function resolveCubeSize() {
+        var raw = window.CUBE_SIZE;
+        var parsed = typeof raw === "number" ? raw : parseFloat(raw);
+        if (!isFinite(parsed) || parsed <= 0) return 100;
+        return parsed;
+    }
+
+    function getCubeVertices() {
+        var size = resolveCubeSize();
+        if (cubeVerticesCache && cubeVerticesCacheSize === size) return cubeVerticesCache;
+        cubeVerticesCacheSize = size;
+        cubeVerticesCache = [
+            [-size, -size, -size], [size, -size, -size],
+            [size, size, -size], [-size, size, -size],
+            [-size, -size, size], [size, -size, size],
+            [size, size, size], [-size, size, size]
+        ];
+        return cubeVerticesCache;
+    }
     var CUBE_EDGES = [
         [0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6],
         [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]
@@ -169,14 +184,18 @@
         var data = imageData.data;
         var colorRgba = oklchToRgba8(l, c, h, alpha);
 
+        var cubeSize = resolveCubeSize();
+        var effectiveFov = fov * (cubeSize / 100);
+        var vertices = getCubeVertices();
+
         for (var i = 0; i < CUBE_EDGES.length; i++) {
             var start = CUBE_EDGES[i][0];
             var end = CUBE_EDGES[i][1];
 
-            var v1 = rotateVertex(CUBE_VERTICES[start], matrix);
-            var v2 = rotateVertex(CUBE_VERTICES[end], matrix);
-            var p1 = perspectiveProject(v1[0], v1[1], v1[2], width, height, fov);
-            var p2 = perspectiveProject(v2[0], v2[1], v2[2], width, height, fov);
+            var v1 = rotateVertex(vertices[start], matrix);
+            var v2 = rotateVertex(vertices[end], matrix);
+            var p1 = perspectiveProject(v1[0], v1[1], v1[2], width, height, effectiveFov);
+            var p2 = perspectiveProject(v2[0], v2[1], v2[2], width, height, effectiveFov);
 
             drawLine(data, pixelWidth, pixelHeight, p1[0] * dpr, p1[1] * dpr, p2[0] * dpr, p2[1] * dpr, colorRgba);
         }
