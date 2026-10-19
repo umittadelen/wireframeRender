@@ -2,126 +2,212 @@
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+	<meta name="theme-color" content="#000000">
 	<title>Wireframe Cube</title>
 	<style>
+		* { box-sizing: border-box; }
+
 		html, body {
 			margin: 0;
-			width: 100%;
-			height: 100%;
+			min-height: 100%;
 			background: #000;
 			color: #bbb;
-			font-family: "Courier New", monospace;
-			display: grid;
-			place-items: center;
+			font-family: "MS PGothic", "MSPGothic", "MS Pゴシック", "Courier New", monospace;
+			-webkit-tap-highlight-color: transparent;
 		}
 
 		body {
-			padding: 20px;
-			box-sizing: border-box;
+			min-height: 100dvh;
+			display: grid;
+			place-items: center;
+			padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
 		}
 
-		.status {
+		main {
+			width: 100%;
+			max-width: 760px;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 28px;
+		}
+
+		canvas {
+			display: block;
+			width: min(220px, 52vw);
+			aspect-ratio: 1;
+			background: #000;
+			image-rendering: pixelated;
+		}
+
+		h1 {
+			margin: 0;
+			font-size: 14px;
+			font-weight: normal;
+			letter-spacing: 0.3em;
 			text-transform: uppercase;
-			letter-spacing: 0.12em;
-			font-size: 12px;
+			color: #e2e2e2;
 			text-align: center;
 		}
 
-		.chooser {
-			display: none;
-			margin-top: 14px;
-			gap: 10px;
-			flex-wrap: wrap;
-			justify-content: center;
-		}
-
-		.chooser.visible {
-			display: flex;
-		}
-
-		.route-btn {
-			background: transparent;
-			border: 1px solid rgba(255, 255, 255, 0.35);
-			color: #e2e2e2;
-			padding: 9px 14px;
-			font-family: "Courier New", monospace;
+		.sub {
+			margin: -18px 0 0;
 			font-size: 11px;
-			letter-spacing: 0.08em;
+			letter-spacing: 0.12em;
 			text-transform: uppercase;
-			cursor: pointer;
+			color: #666;
+			text-align: center;
 		}
 
-		.route-btn:hover {
+		.modes {
+			width: 100%;
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 12px;
+		}
+
+		.mode {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			padding: 16px;
+			min-height: 110px;
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			color: inherit;
+			text-decoration: none;
+			transition: border-color 0.15s, background 0.15s;
+		}
+
+		.mode:hover, .mode:focus-visible {
 			border-color: rgba(255, 255, 255, 0.7);
+			background: rgba(255, 255, 255, 0.04);
+			outline: none;
+		}
+
+		.mode:active { background: rgba(255, 255, 255, 0.08); }
+
+		.name {
+			font-size: 13px;
+			letter-spacing: 0.14em;
+			text-transform: uppercase;
+			color: #e2e2e2;
+		}
+
+		.desc {
+			font-size: 11px;
+			line-height: 1.5;
+			color: #777;
+		}
+
+		.key {
+			display: none;
+			margin-top: auto;
+			font-size: 10px;
+			color: #555;
+		}
+
+		@media (hover: hover) and (pointer: fine) {
+			.key { display: block; }
+		}
+
+		@media (max-width: 640px) {
+			main { gap: 22px; }
+			.modes { grid-template-columns: 1fr; }
+			.mode { min-height: 0; padding: 16px 18px; }
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.mode { transition: none; }
 		}
 	</style>
 </head>
 <body>
-	<div class="status" id="status">Routing to the best experience...</div>
-	<div class="chooser" id="chooser">
-		<button class="route-btn" id="open-gyro" type="button">Open Mobile Gyro</button>
-		<button class="route-btn" id="open-keyboard" type="button">Open Desktop Keyboard</button>
-	</div>
+	<main>
+		<canvas id="cube" aria-hidden="true"></canvas>
+		<h1>Wireframe Cube</h1>
+		<p class="sub">Choose a control mode</p>
+
+		<nav class="modes">
+			<a class="mode" href="gyro.html">
+				<span class="name">Gyro</span>
+				<span class="desc">Tilt your phone to rotate the cube.</span>
+				<span class="key">Press 3</span>
+			</a>
+			<a class="mode" href="keyboard.html">
+				<span class="name">Keyboard</span>
+				<span class="desc">WASD, Q/E.</span>
+				<span class="key">Press 1</span>
+			</a>
+			<a class="mode" href="controller.html">
+				<span class="name">Controller</span>
+				<span class="desc">PS5 controller</span>
+				<span class="key">Press 4</span>
+			</a>
+			<a class="mode" href="camera.html">
+				<span class="name">Camera</span>
+				<span class="desc">Pinch and move your hand. Needs camera access.</span>
+				<span class="key">Press 2</span>
+			</a>
+
+		</nav>
+	</main>
+
+	<script>
+		window.CUBE_SIZE = 50;
+	</script>
+	<script src="cube-core.js"></script>
 	<script>
 		(function () {
-			var statusEl = document.getElementById('status');
-			var chooserEl = document.getElementById('chooser');
-			var gyroBtn = document.getElementById('open-gyro');
-			var keyboardBtn = document.getElementById('open-keyboard');
-			var params = new URLSearchParams(window.location.search);
-			var forceManual = params.get('manual') === '1';
-			var redirected = false;
+			var Core = window.CubeCore;
+			var canvas = document.getElementById("cube");
+			var ctx = canvas.getContext("2d");
+			var matrix = Core.IDENTITY_MATRIX.slice();
 
-			function showChooser(message) {
-				statusEl.textContent = message;
-				chooserEl.classList.add('visible');
-			}
-
-			gyroBtn.addEventListener('click', function () {
-				window.location.href = 'gyro.html';
+			var keys = { "1": "keyboard.html", "2": "camera.html", "3": "gyro.html", "4": "controller.html" };
+			addEventListener("keydown", function (e) {
+				if (keys[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) location.href = keys[e.key];
 			});
 
-			keyboardBtn.addEventListener('click', function () {
-				window.location.href = 'keyboard.html';
-			});
-
-			if (forceManual) {
-				showChooser('Manual test mode enabled. Choose a view.');
-				return;
+			function draw() {
+				Core.drawWireframe(ctx, canvas.clientWidth, canvas.clientHeight, matrix);
 			}
 
-			try {
-				var ua = navigator.userAgent || "";
-				var hasUA = ua.length > 0;
-				var mobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-				var touchPoints = navigator.maxTouchPoints || 0;
-				var hasScreen = typeof screen !== 'undefined' && typeof screen.width === 'number' && typeof screen.height === 'number';
-				var compactTouchDevice = hasScreen && touchPoints > 1 && Math.min(screen.width, screen.height) <= 1024;
-				var confidentDetection = hasUA || hasScreen;
-				var isMobile = mobileUA || compactTouchDevice;
-
-				if (!confidentDetection) {
-					showChooser('Could not detect device. Choose mode manually.');
-					return;
-				}
-
-				var target = isMobile ? 'gyro.html' : 'keyboard.html';
-				redirected = true;
-				window.location.replace(target);
-			} catch (err) {
-				showChooser('Detection failed. Choose mode manually.');
+			function resize() {
+				var dpr = window.devicePixelRatio || 1;
+				canvas.width = Math.round(canvas.clientWidth * dpr);
+				canvas.height = Math.round(canvas.clientHeight * dpr);
+				draw();
 			}
 
-			setTimeout(function () {
-				if (!redirected && !document.hidden) {
-					showChooser('Routing delayed. Choose mode manually.');
-				}
-			}, 900);
+			function rotX(a) {
+				var c = Math.cos(a), s = Math.sin(a);
+				return [1, 0, 0, 0, c, -s, 0, s, c];
+			}
+
+			function rotY(a) {
+				var c = Math.cos(a), s = Math.sin(a);
+				return [c, 0, s, 0, 1, 0, -s, 0, c];
+			}
+
+			matrix = Core.multiply(rotX(0.5), rotY(0.6));
+
+			addEventListener("resize", resize);
+			resize();
+
+			if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+			var last = 0;
+			function loop(now) {
+				requestAnimationFrame(loop);
+				var dt = Math.min((now - last) / 1000 || 0.016, 0.1);
+				last = now;
+				var delta = Core.multiply(rotX(0.27 * dt), rotY(0.4 * dt));
+				matrix = Core.orthonormalize(Core.multiply(delta, matrix));
+				draw();
+			}
+			requestAnimationFrame(loop);
 		})();
 	</script>
-	<noscript>
-		<div class="status">JavaScript required. Open gyro.html or keyboard.html directly.</div>
-	</noscript>
 </body>
 </html>

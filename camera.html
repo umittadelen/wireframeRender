@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wireframe Cube - Camera</title>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        body { width: 100vw; height: 100vh; }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background-color: #000;
+            image-rendering: pixelated;
+        }
+        #camera {
+            position: fixed;
+            width: 1px; height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #status {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            color: #666;
+            font: 12px monospace;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #status.active { color: #0f0; }
+    </style>
+</head>
+<body>
+    <canvas id="fullscreen-canvas"></canvas>
+    <video id="camera" playsinline muted></video>
+    <div id="status">Loading hand tracker...</div>
+    <script src="cube-core.js"></script>
+    <script type="module">
+        import {
+            FilesetResolver,
+            HandLandmarker
+        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/vision_bundle.mjs";
+
+        const Core = window.CubeCore;
+
+        const CONFIG = {
+            pinchStart: 0.26,
+            pinchEnd: 0.33,
+            pinchHold: 0.295,
+            pinchConfirmFrames: 2,
+            lostGraceFrames: 4,
+
+            pinchMinCutoff: 3.0,
+            pinchBeta: 0.5,
+            posMinCutoff: 2.5,
+            posBeta: 8,
+
+            yawSensitivity: 1.0,
+            pitchSensitivity: 1.0,
+            rollSensitivity: 1.0,
+            rollEnabled: true,
+            invertYaw: false,
+            invertPitch: false,
+            invertRoll: false,
+
+            accel: 0.25,
+            accelCap: 6,
+
+            maxRotationStep: 0.3,
+            deadzone: 0.006,
+            rollDeadzone: 0.01,
+
+            followSpeed: 30,
+
+            cameraWidth: 480,
+            cameraHeight: 360,
+            cameraFps: 60,
+
+            slowInferenceMs: 22,
+            fastInferenceMs: 14,
+
+            statusIntervalMs: 100
+        };
+
+        const canvas = document.getElementById("fullscreen-canvas");
+        const ctx = canvas.getContext("2d");
+        const status = document.getElementById("status");
+        const video = document.getElementById("camera");
+
+        let target = Core.IDENTITY_MATRIX.slice();
+        let matrix = Core.IDENTITY_MATRIX.slice();
+        let dirty = true;
+
+        function rotX(a) {
+            const c = Math.cos(a), s = Math.sin(a);
+            return [1, 0, 0, 0, c, -s, 0, s, c];
+        }
+
+        function rotY(a) {
+            const c = Math.cos(a), s = Math.sin(a);
+            return [c, 0, s, 0, 1, 0, -s, 0, c];
+        }
+
+        function rotZ(a) {
+            const c = Math.cos(a), s = Math.sin(a);
+            return [c, -s, 0, s, c, 0, 0, 0, 1];
+        }
+
+        function applyDelta(aX, aY, aZ) {
+            let delta = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+            if (aX) delta = Core.multiply(rotX(aX), delta);
+            if (aY) delta = Core.multiply(rotY(aY), delta);
+            if (aZ) delta = Core.multiply(rotZ(aZ), delta);
+            target = Core.orthonormalize(Core.multiply(delta, target));
+            dirty = true;
+        }
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = window.innerWidth + "px";
+            canvas.style.height = window.innerHeight + "px";
+            dirty = true;
+        }
+
+        let lastFrame = 0;
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+            const dt = Math.min((now - lastFrame) / 1000 || 0.016, 0.1);
+            lastFrame = now;
+
+            if (matrix !== target) {
+                if (!isPinching) {
+                    matrix = target;
+                } else {
+                    const k = 1 - Math.exp(-CONFIG.followSpeed * dt);
+                    const next = new Array(9);
+                    for (let i = 0; i < 9; i++) next[i] = matrix[i] + (target[i] - matrix[i]) * k;
+                    matrix = Core.orthonormalize(next);
+                }
+                dirty = true;
+            }
+
+            if (!dirty) return;
+            dirty = false;
+            Core.drawWireframe(ctx, canvas.clientWidth, canvas.clientHeight, matrix);
+        }
+
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+        requestAnimationFrame(animate);
+
+        class OneEuro {
+            constructor(minCutoff, beta) {
+                this.minCutoff = minCutoff;
+                this.beta = beta;
+                this.reset();
+            }
+
+            reset() {
+                this.x = null;
+                this.dx = 0;
+                this.t = 0;
+            }
+
+            static alpha(cutoff, dt) {
+                const r = 2 * Math.PI * cutoff * dt;
+                return r / (r + 1);
+            }
+
+            filter(v, t) {
+                if (this.x === null) {
+                    this.x = v;
+                    this.t = t;
+                    return v;
+                }
+                const dt = Math.max(t - this.t, 1e-3);
+                this.t = t;
+                this.dx += ((v - this.x) / dt - this.dx) * OneEuro.alpha(1, dt);
+                this.x += (v - this.x) * OneEuro.alpha(this.minCutoff + this.beta * Math.abs(this.dx), dt);
+                return this.x;
+            }
+        }
+
+        const pinchFilter = new OneEuro(CONFIG.pinchMinCutoff, CONFIG.pinchBeta);
+        const posX = new OneEuro(CONFIG.posMinCutoff, CONFIG.posBeta);
+        const posY = new OneEuro(CONFIG.posMinCutoff, CONFIG.posBeta);
+
+        let isPinching = false;
+        let pinchFrames = 0;
+        let lostFrames = 0;
+        let prevX = null;
+        let prevY = null;
+        let prevT = 0;
+        let prevAngle = null;
+        let palmSmooth = 0;
+        let lastStatusTime = 0;
+        let lastDetectTs = 0;
+        let inferenceMs = 0;
+        let frameGate = 1;
+        let frameIndex = 0;
+        let handTracker;
+
+        function setStatus(text, force = false) {
+            const now = performance.now();
+            if (!force && now - lastStatusTime < CONFIG.statusIntervalMs) return;
+            lastStatusTime = now;
+            status.classList.toggle("active", isPinching);
+            if (status.textContent !== text) status.textContent = text;
+        }
+
+        function clamp(v, min, max) {
+            return Math.max(min, Math.min(max, v));
+        }
+
+        function wrapAngle(a) {
+            while (a > Math.PI) a -= Math.PI * 2;
+            while (a < -Math.PI) a += Math.PI * 2;
+            return a;
+        }
+
+        function releaseGrab() {
+            isPinching = false;
+            prevX = null;
+            prevY = null;
+            prevAngle = null;
+        }
+
+        function resetTracking() {
+            releaseGrab();
+            pinchFrames = 0;
+            palmSmooth = 0;
+            pinchFilter.reset();
+            posX.reset();
+            posY.reset();
+        }
+
+        async function setupHandTracking() {
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm"
+            );
+
+            const make = delegate =>
+                HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath:
+                            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                        delegate
+                    },
+                    runningMode: "VIDEO",
+                    numHands: 1,
+                    minHandDetectionConfidence: 0.5,
+                    minHandPresenceConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+
+            try {
+                return await make("GPU");
+            } catch (e) {
+                console.warn("GPU delegate failed, falling back to CPU", e);
+                return await make("CPU");
+            }
+        }
+
+        function updateFromHand(hand, t) {
+            const thumb = hand[4];
+            const index = hand[8];
+            const wrist = hand[0];
+            const mcp = hand[9];
+
+            const palmSize = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
+
+            if (palmSize < 0.001) {
+                resetTracking();
+                setStatus("Hand tracking unstable");
+                return;
+            }
+
+            const aspect = video.videoWidth / video.videoHeight || 4 / 3;
+
+            const rawRatio = Math.hypot(thumb.x - index.x, thumb.y - index.y) / palmSize;
+            const ratio = pinchFilter.filter(rawRatio, t);
+
+            const palmU = Math.hypot((mcp.x - wrist.x) * aspect, mcp.y - wrist.y);
+            palmSmooth = palmSmooth === 0 ? palmU : palmSmooth + (palmU - palmSmooth) * 0.2;
+
+            const cx = (wrist.x + hand[5].x + mcp.x + hand[13].x + hand[17].x) * 0.2;
+            const cy = (wrist.y + hand[5].y + mcp.y + hand[13].y + hand[17].y) * 0.2;
+            const px = posX.filter(cx * aspect, t);
+            const py = posY.filter(cy, t);
+            const angle = Math.atan2(mcp.y - wrist.y, (mcp.x - wrist.x) * aspect);
+
+            if (!isPinching) {
+                if (ratio < CONFIG.pinchStart) {
+                    if (++pinchFrames >= CONFIG.pinchConfirmFrames) {
+                        isPinching = true;
+                        prevX = px;
+                        prevY = py;
+                        prevT = t;
+                        prevAngle = angle;
+                    }
+                } else {
+                    pinchFrames = 0;
+                }
+            } else if (ratio > CONFIG.pinchEnd) {
+                releaseGrab();
+                pinchFrames = 0;
+            }
+
+            if (isPinching && prevX !== null) {
+                const m = CONFIG.maxRotationStep;
+                const dt = Math.max(t - prevT, 1e-3);
+                const dx = (px - prevX) / palmSmooth;
+                const dy = (py - prevY) / palmSmooth;
+                const dist = Math.hypot(dx, dy);
+                const da = wrapAngle(angle - prevAngle);
+                const holding = ratio < CONFIG.pinchHold;
+
+                let aX = 0;
+                let aY = 0;
+                let aZ = 0;
+
+                if (holding && dist > CONFIG.deadzone) {
+                    const g = 1 + CONFIG.accel * Math.min(dist / dt, CONFIG.accelCap);
+                    aY = clamp(dx * CONFIG.yawSensitivity * g, -m, m);
+                    aX = clamp(dy * CONFIG.pitchSensitivity * g, -m, m);
+                    if (CONFIG.invertYaw) aY = -aY;
+                    if (CONFIG.invertPitch) aX = -aX;
+                }
+
+                if (holding && CONFIG.rollEnabled && Math.abs(da) > CONFIG.rollDeadzone) {
+                    aZ = -clamp(da * CONFIG.rollSensitivity, -m, m);
+                    if (CONFIG.invertRoll) aZ = -aZ;
+                }
+
+                prevX = px;
+                prevY = py;
+                prevT = t;
+                prevAngle = angle;
+
+                if (aX || aY || aZ) applyDelta(aX, aY, aZ);
+            }
+
+            setStatus(
+                `${isPinching ? "GRABBED" : "Pinch to grab"} | ` +
+                `Raw: ${rawRatio.toFixed(3)} | Filtered: ${ratio.toFixed(3)} | ${inferenceMs.toFixed(0)}ms`
+            );
+        }
+
+        function onVideoFrame(now) {
+            scheduleNextFrame();
+
+            if (!handTracker || video.readyState < 2) return;
+            if (++frameIndex % frameGate) return;
+
+            const ts = now > lastDetectTs ? now : lastDetectTs + 1;
+            lastDetectTs = ts;
+
+            try {
+                const t0 = performance.now();
+                const result = handTracker.detectForVideo(video, ts);
+                inferenceMs += (performance.now() - t0 - inferenceMs) * 0.1;
+
+                if (inferenceMs > CONFIG.slowInferenceMs) frameGate = 2;
+                else if (inferenceMs < CONFIG.fastInferenceMs) frameGate = 1;
+
+                if (result.landmarks.length > 0) {
+                    lostFrames = 0;
+                    updateFromHand(result.landmarks[0], ts / 1000);
+                } else if (++lostFrames > CONFIG.lostGraceFrames) {
+                    resetTracking();
+                    setStatus("Show your hand to the camera");
+                }
+            } catch (error) {
+                resetTracking();
+                console.error("Tracking error:", error);
+                setStatus("Tracking error - see console", true);
+            }
+        }
+
+        function scheduleNextFrame() {
+            if ("requestVideoFrameCallback" in video) {
+                video.requestVideoFrameCallback(onVideoFrame);
+            } else {
+                requestAnimationFrame(onVideoFrame);
+            }
+        }
+
+        async function start() {
+            try {
+                handTracker = await setupHandTracking();
+
+                setStatus("Requesting camera access...", true);
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: "user",
+                        width: { ideal: CONFIG.cameraWidth },
+                        height: { ideal: CONFIG.cameraHeight },
+                        frameRate: { ideal: CONFIG.cameraFps }
+                    },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+                await video.play();
+
+                setStatus("Pinch to grab and rotate", true);
+                scheduleNextFrame();
+            } catch (error) {
+                console.error(error);
+                setStatus("Startup error: " + error.message, true);
+            }
+        }
+
+        window.addEventListener("pagehide", () => {
+            const stream = video.srcObject;
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            if (handTracker) handTracker.close();
+        });
+
+        start();
+    </script>
+</body>
+</html>

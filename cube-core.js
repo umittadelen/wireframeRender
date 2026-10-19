@@ -5,7 +5,7 @@
         0, 0, 1
     ];
 
-    var CUBE_SIZE = 100;
+    var CUBE_SIZE = window.CUBE_SIZE || 100;
     var CUBE_VERTICES = [
         [-CUBE_SIZE, -CUBE_SIZE, -CUBE_SIZE], [CUBE_SIZE, -CUBE_SIZE, -CUBE_SIZE],
         [CUBE_SIZE, CUBE_SIZE, -CUBE_SIZE], [-CUBE_SIZE, CUBE_SIZE, -CUBE_SIZE],

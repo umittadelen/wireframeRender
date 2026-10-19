@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wireframe Cube - Controller</title>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        body { width: 100vw; height: 100vh; }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background-color: #000;
+            image-rendering: pixelated;
+        }
+        #gp-status {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            color: #666;
+            font: 12px monospace;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #gp-status.connected { color: #0f0; }
+    </style>
+</head>
+<body>
+    <canvas id="fullscreen-canvas"></canvas>
+    <div id="gp-status">No controller detected</div>
+    <script src="cube-core.js"></script>
+    <script>
+        const Core = window.CubeCore;
+
+        let matrix = Core.IDENTITY_MATRIX.slice();
+
+        const ROT_STEP = 0.0075;
+        const TARGET_FPS = 165;
+        const DEADZONE = 0.12;
+
+        const canvas = document.getElementById('fullscreen-canvas');
+        const ctx = canvas.getContext('2d');
+        const gpStatus = document.getElementById('gp-status');
+
+        let connectedIndex = -1;
+
+        window.addEventListener('gamepadconnected', e => {
+            connectedIndex = e.gamepad.index;
+            gpStatus.textContent = `Gamepad ${e.gamepad.index}: ${e.gamepad.id}`;
+            gpStatus.classList.add('connected');
+        });
+        window.addEventListener('gamepaddisconnected', e => {
+            if (e.gamepad.index === connectedIndex) connectedIndex = -1;
+            gpStatus.textContent = 'No controller detected';
+            gpStatus.classList.remove('connected');
+        });
+
+        function getGamepad() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (const gp of gamepads) {
+                if (gp && gp.connected) return gp;
+            }
+            return null;
+        }
+
+        function deadzone(v) {
+            return Math.abs(v) > DEADZONE ? v : 0;
+        }
+
+        function updateRotation(dtSeconds) {
+            const gp = getGamepad();
+            if (!gp) return;
+
+            let delta = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+            const step = ROT_STEP * TARGET_FPS * dtSeconds;
+
+            const lx = deadzone(gp.axes[0] || 0);
+            const ly = deadzone(gp.axes[1] || 0);
+            const rx = deadzone(gp.axes[2] || 0);
+            const ry = deadzone(gp.axes[3] || 0);
+
+            const pitchAmount = ly + ry;
+            if (pitchAmount !== 0) {
+                const a = pitchAmount * step;
+                const cos = Math.cos(a), sin = Math.sin(a);
+                delta = Core.multiply([1, 0, 0, 0, cos, -sin, 0, sin, cos], delta);
+            }
+            if (lx !== 0) {
+                const a = -lx * step;
+                const cos = Math.cos(a), sin = Math.sin(a);
+                delta = Core.multiply([cos, 0, sin, 0, 1, 0, -sin, 0, cos], delta);
+            }
+            if (rx !== 0) {
+                const a = rx * step;
+                const cos = Math.cos(a), sin = Math.sin(a);
+                delta = Core.multiply([cos, -sin, 0, sin, cos, 0, 0, 0, 1], delta);
+            }
+
+            matrix = Core.orthonormalize(Core.multiply(delta, matrix));
+        }
+
+        let lastTimestamp = 0;
+
+        function animate(timestamp) {
+            const dtSeconds = lastTimestamp === 0
+                ? 1 / TARGET_FPS
+                : Math.min((timestamp - lastTimestamp) / 1000, 0.1);
+            lastTimestamp = timestamp;
+
+            updateRotation(dtSeconds);
+            Core.drawWireframe(ctx, canvas.clientWidth, canvas.clientHeight, matrix);
+            requestAnimationFrame(animate);
+        }
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('DOMContentLoaded', () => {
+            resizeCanvas();
+            requestAnimationFrame(animate);
+        });
+    </script>
+</body>
+</html>

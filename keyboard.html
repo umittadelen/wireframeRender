@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wireframe Cube</title>
+    <title>Wireframe Cube - Keyboard</title>
     <style>
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
         body { width: 100vw; height: 100vh; }
@@ -15,123 +15,53 @@
             background-color: #000;
             image-rendering: pixelated;
         }
-        #gp-status {
-            position: fixed;
-            bottom: 12px;
-            left: 12px;
-            color: #666;
-            font: 12px monospace;
-            pointer-events: none;
-            z-index: 10;
-        }
-        #gp-status.connected { color: #0f0; }
     </style>
 </head>
 <body>
     <canvas id="fullscreen-canvas"></canvas>
-    <div id="gp-status">No controller detected</div>
     <script src="cube-core.js"></script>
     <script>
         const Core = window.CubeCore;
         const IDENTITY_MATRIX = Core.IDENTITY_MATRIX;
 
-        // Use a Matrix to store orientation instead of Euler angles
         let matrix = IDENTITY_MATRIX.slice();
 
         const ROT_STEP = 0.0075;
         const TARGET_FPS = 165;
-        const DEADZONE = 0.12;
         const pressed = {};
 
-        let connectedIndex = -1;
-        const gpStatus = document.getElementById('gp-status');
-
-        window.addEventListener('gamepadconnected', e => {
-            connectedIndex = e.gamepad.index;
-            gpStatus.textContent = `Gamepad ${e.gamepad.index}: ${e.gamepad.id}`;
-            gpStatus.classList.add('connected');
-        });
-        window.addEventListener('gamepaddisconnected', e => {
-            if (e.gamepad.index === connectedIndex) connectedIndex = -1;
-            gpStatus.textContent = `No controller detected`;
-            gpStatus.classList.remove('connected');
-        });
-
-        function getGamepad() {
-            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-            for (const gp of gamepads) {
-                if (gp && gp.connected) return gp;
-            }
-            return null;
-        }
-
-        function deadzone(v) {
-            return Math.abs(v) > DEADZONE ? v : 0;
-        }
+        const canvas = document.getElementById('fullscreen-canvas');
+        const ctx = canvas.getContext('2d');
 
         window.addEventListener('keydown', e => {
             const key = e.key.toLowerCase();
             pressed[key] = true;
-            if (key === 'r') {
-                matrix = IDENTITY_MATRIX.slice();
-            }
+            if (key === 'r') matrix = IDENTITY_MATRIX.slice();
         });
         window.addEventListener('keyup', e => { pressed[e.key.toLowerCase()] = false; });
+        window.addEventListener('blur', () => { for (const k in pressed) pressed[k] = false; });
 
         function updateRotation(dtSeconds) {
-            let delta = [1, 0, 0, 0, 1, 0, 0, 0, 1]; // Identity
+            let delta = [1, 0, 0, 0, 1, 0, 0, 0, 1];
             const step = ROT_STEP * TARGET_FPS * dtSeconds;
 
-            // Create incremental rotation based on view axis
             if (pressed['w'] || pressed['s']) {
                 const a = pressed['w'] ? -step : step;
                 const cos = Math.cos(a), sin = Math.sin(a);
-                // Rotate around Screen X-axis
                 delta = Core.multiply([1, 0, 0, 0, cos, -sin, 0, sin, cos], delta);
             }
             if (pressed['a'] || pressed['d']) {
                 const a = pressed['a'] ? step : -step;
                 const cos = Math.cos(a), sin = Math.sin(a);
-                // Rotate around Screen Y-axis
                 delta = Core.multiply([cos, 0, sin, 0, 1, 0, -sin, 0, cos], delta);
             }
             if (pressed['q'] || pressed['e']) {
                 const a = pressed['q'] ? -step : step;
                 const cos = Math.cos(a), sin = Math.sin(a);
-                // Rotate around Screen Z-axis
                 delta = Core.multiply([cos, -sin, 0, sin, cos, 0, 0, 0, 1], delta);
             }
 
-            // Gamepad support — both sticks
-            const gp = getGamepad();
-            if (gp) {
-                const lx = deadzone(gp.axes[0] || 0); // Left stick X  → yaw  (screen Y)
-                const ly = deadzone(gp.axes[1] || 0); // Left stick Y  → pitch (screen X)
-                const rx = deadzone(gp.axes[2] || 0); // Right stick X → roll  (screen Z)
-                const ry = deadzone(gp.axes[3] || 0); // Right stick Y → pitch (screen X)
-
-                const pitchAmount = ly + ry; // both sticks contribute to pitch
-                if (pitchAmount !== 0) {
-                    const a = pitchAmount * step;
-                    const cos = Math.cos(a), sin = Math.sin(a);
-                    delta = Core.multiply([1, 0, 0, 0, cos, -sin, 0, sin, cos], delta);
-                }
-                if (lx !== 0) {
-                    const a = -lx * step;
-                    const cos = Math.cos(a), sin = Math.sin(a);
-                    delta = Core.multiply([cos, 0, sin, 0, 1, 0, -sin, 0, cos], delta);
-                }
-                if (rx !== 0) {
-                    const a = rx * step;
-                    const cos = Math.cos(a), sin = Math.sin(a);
-                    delta = Core.multiply([cos, -sin, 0, sin, cos, 0, 0, 0, 1], delta);
-                }
-            }
-
-            // Apply the delta rotation TO the current matrix
-            // This order (delta * matrix) makes rotation relative to the SCREEN
-            matrix = Core.multiply(delta, matrix);
-            matrix = Core.orthonormalize(matrix);
+            matrix = Core.orthonormalize(Core.multiply(delta, matrix));
         }
 
         let lastTimestamp = 0;
@@ -143,14 +73,11 @@
             lastTimestamp = timestamp;
 
             updateRotation(dtSeconds);
-            const canvas = document.getElementById('fullscreen-canvas');
-            const ctx = canvas.getContext('2d');
             Core.drawWireframe(ctx, canvas.clientWidth, canvas.clientHeight, matrix);
             requestAnimationFrame(animate);
         }
 
         function resizeCanvas() {
-            const canvas = document.getElementById('fullscreen-canvas');
             const dpr = window.devicePixelRatio || 1;
             canvas.width = window.innerWidth * dpr;
             canvas.height = window.innerHeight * dpr;
@@ -161,7 +88,7 @@
         window.addEventListener('resize', resizeCanvas);
         window.addEventListener('DOMContentLoaded', () => {
             resizeCanvas();
-            animate();
+            requestAnimationFrame(animate);
         });
     </script>
 </body>
